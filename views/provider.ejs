@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://js.stripe.com/v3/"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    h1, h2, h3 { font-family: 'Space Grotesk', sans-serif; }
+    .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <!-- Header -->
+  <header class="gradient-bg text-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <nav class="flex items-center space-x-4 text-sm">
+        <a href="/" class="hover:text-purple-200">Home</a>
+        <span>/</span>
+        <span id="provider-name-breadcrumb">Provider</span>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Provider Details -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Loading State -->
+    <div id="loading" class="text-center py-12">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+      <p class="mt-4 text-gray-500">Loading provider details...</p>
+    </div>
+
+    <!-- Provider Info -->
+    <div id="provider-info" class="hidden">
+      <div class="bg-white rounded-xl shadow-lg p-8 mb-8">
+        <div class="flex items-start justify-between">
+          <div class="flex items-center space-x-4">
+            <div id="provider-logo" class="w-16 h-16 bg-gray-100 rounded-xl flex items-center justify-center text-2xl font-bold text-purple-600">
+              <!-- Logo placeholder -->
+            </div>
+            <div>
+              <h1 id="provider-name" class="text-3xl font-bold text-gray-900"></h1>
+              <p id="provider-description" class="text-gray-500 mt-1"></p>
+            </div>
+          </div>
+          <div class="text-right">
+            <span id="provider-status" class="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+              Active
+            </span>
+            <p id="provider-network" class="text-sm text-gray-400 mt-2"></p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mt-8 pt-8 border-t">
+          <div>
+            <p class="text-sm text-gray-500">Website</p>
+            <a id="provider-website" href="#" target="_blank" class="text-purple-600 hover:underline font-medium"></a>
+          </div>
+          <div>
+            <p class="text-sm text-gray-500">Network</p>
+            <p id="provider-chain" class="font-medium"></p>
+          </div>
+          <div>
+            <p class="text-sm text-gray-500">Explorer</p>
+            <a id="provider-explorer" href="#" target="_blank" class="text-purple-600 hover:underline font-medium">View</a>
+          </div>
+          <div>
+            <p class="text-sm text-gray-500">Last Synced</p>
+            <p id="provider-synced" class="font-medium"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Provider Stats -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div class="bg-white rounded-xl p-6 shadow-sm">
+          <p class="text-gray-500 text-sm">Available Plans</p>
+          <p id="stat-plans" class="text-3xl font-bold text-gray-900 mt-1">0</p>
+        </div>
+        <div class="bg-white rounded-xl p-6 shadow-sm">
+          <p class="text-gray-500 text-sm">Min Price</p>
+          <p id="stat-min-price" class="text-3xl font-bold text-green-600 mt-1">$0</p>
+        </div>
+        <div class="bg-white rounded-xl p-6 shadow-sm">
+          <p class="text-gray-500 text-sm">Max Storage</p>
+          <p id="stat-max-storage" class="text-3xl font-bold text-purple-600 mt-1">0 GB</p>
+        </div>
+      </div>
+
+      <!-- Storage Plans -->
+      <h2 class="text-2xl font-bold mb-6">Available Storage Plans</h2>
+      <div id="plans-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Plans will be loaded here -->
+      </div>
+    </div>
+
+    <!-- Error State -->
+    <div id="error-state" class="hidden text-center py-12">
+      <p class="text-red-500 text-lg">Provider not found</p>
+      <a href="/" class="text-purple-600 hover:underline mt-4 inline-block">← Back to Home</a>
+    </div>
+  </main>
+
+  <script>
+    const stripe = Stripe('<%= stripePublishableKey %>');
+    const providerSlug = '<%= providerSlug %>';
+    let currentUser = JSON.parse(localStorage.getItem('depin_user') || 'null');
+
+    async function loadProvider() {
+      try {
+        // Load provider details
+        const providerRes = await fetch(`/api/providers/${providerSlug}`);
+        const providerData = await providerRes.json();
+
+        if (!providerData.success) {
+          document.getElementById('loading').classList.add('hidden');
+          document.getElementById('error-state').classList.remove('hidden');
+          return;
+        }
+
+        const provider = providerData.data;
+
+        // Update UI with provider info
+        document.getElementById('provider-name').textContent = provider.name;
+        document.getElementById('provider-name-breadcrumb').textContent = provider.name;
+        document.getElementById('provider-description').textContent = provider.description || '';
+        document.getElementById('provider-logo').textContent = provider.name.charAt(0);
+        document.getElementById('provider-website').textContent = provider.website || 'N/A';
+        document.getElementById('provider-website').href = provider.website || '#';
+        document.getElementById('provider-chain').textContent = `${provider.network} (Chain ID: ${provider.chainId || 'N/A'})`;
+        document.getElementById('provider-network').textContent = provider.network;
+        document.getElementById('provider-explorer').href = provider.explorerUrl || '#';
+        document.getElementById('provider-synced').textContent = provider.lastSyncedAt 
+          ? new Date(provider.lastSyncedAt).toLocaleString() 
+          : 'Never';
+
+        // Load plans for this provider
+        const plansRes = await fetch(`/api/storage/plans?provider=${providerSlug}&pageSize=50`);
+        const plansData = await plansRes.json();
+
+        if (plansData.success) {
+          renderPlans(plansData.data);
+          updateStats(plansData.data);
+        }
+
+        // Show content
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('provider-info').classList.remove('hidden');
+
+      } catch (error) {
+        console.error('Failed to load provider:', error);
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('error-state').classList.remove('hidden');
+      }
+    }
+
+    function updateStats(plans) {
+      document.getElementById('stat-plans').textContent = plans.length;
+      
+      if (plans.length > 0) {
+        const minPrice = Math.min(...plans.map(p => p.priceUsdCents));
+        const maxStorage = Math.max(...plans.map(p => p.storageSizeGb));
+        document.getElementById('stat-min-price').textContent = '$' + (minPrice / 100).toFixed(2);
+        document.getElementById('stat-max-storage').textContent = maxStorage >= 1024 
+          ? (maxStorage / 1024).toFixed(1) + ' TB' 
+          : maxStorage + ' GB';
+      }
+    }
+
+    function renderPlans(plans) {
+      const grid = document.getElementById('plans-grid');
+      
+      if (plans.length === 0) {
+        grid.innerHTML = '<p class="col-span-full text-center text-gray-500">No plans available</p>';
+        return;
+      }
+
+      grid.innerHTML = plans.map(plan => `
+        <div class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+          <div class="p-6">
+            <h3 class="text-xl font-bold text-gray-900 mb-2">${plan.name}</h3>
+            <p class="text-gray-500 text-sm mb-4">${plan.description || ''}</p>
+            
+            <div class="space-y-2 mb-4">
+              <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Storage</span>
+                <span class="font-medium">${plan.storageSizeGb} GB</span>
+              </div>
+              <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Duration</span>
+                <span class="font-medium">${plan.durationDays} days</span>
+              </div>
+              ${plan.priceNative ? `
+              <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Native Price</span>
+                <span class="font-medium">${plan.priceNative} ${plan.nativeCurrency}</span>
+              </div>` : ''}
+            </div>
+            
+            <div class="border-t pt-4">
+              <div class="flex justify-between items-center mb-4">
+                <span class="text-gray-500">Price</span>
+                <span class="text-2xl font-bold text-purple-600">$${plan.priceUsd}</span>
+              </div>
+              
+              <button onclick="purchasePlan('${plan.id}')" 
+                      class="w-full bg-purple-600 text-white py-3 rounded-lg font-medium hover:bg-purple-700 transition">
+                Purchase
+              </button>
+            </div>
+          </div>
+          
+          ${plan.features && plan.features.length > 0 ? `
+          <div class="bg-gray-50 px-6 py-4">
+            <ul class="text-xs text-gray-600 space-y-1">
+              ${plan.features.map(f => `<li>✓ ${f}</li>`).join('')}
+            </ul>
+          </div>` : ''}
+        </div>
+      `).join('');
+    }
+
+    async function purchasePlan(planId) {
+      if (!currentUser) {
+        const email = prompt('Enter your email to continue:');
+        if (!email) return;
+        
+        const res = await fetch('/api/users/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          currentUser = data.data;
+          localStorage.setItem('depin_user', JSON.stringify(currentUser));
+        } else {
+          alert('Login failed');
+          return;
+        }
+      }
+
+      try {
+        const response = await fetch('/api/payments/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUser.id, planId }),
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          window.location.href = data.data.sessionUrl;
+        } else {
+          alert(data.error?.message || 'Failed to create checkout');
+        }
+      } catch (error) {
+        console.error('Purchase failed:', error);
+        alert('Purchase failed. Please try again.');
+      }
+    }
+
+    // Initialize
+    loadProvider();
+  </script>
+</body>
+</html>

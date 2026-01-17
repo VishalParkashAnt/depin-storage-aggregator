@@ -1,0 +1,378 @@
+# DePIN Storage Aggregator
+
+A production-ready **Decentralized Physical Infrastructure Network (DePIN)** storage aggregator that unifies multiple decentralized storage providers into a single platform. Users can browse storage plans, pay with fiat (via Stripe), and the platform automatically handles blockchain transactions on testnets.
+
+![Architecture](docs/architecture.png)
+
+## 🎯 Features
+
+- **Unified Storage Marketplace**: Browse and compare plans from 5+ decentralized storage providers
+- **Fiat Payments**: Pay with credit card via Stripe Checkout (sandbox mode)
+- **Automated Blockchain Transactions**: Behind-the-scenes on-chain execution on testnets
+- **Real-time Order Tracking**: Monitor payment and blockchain transaction status
+- **Provider Sync**: Automatic synchronization of storage plans from providers
+- **Clean Architecture**: Adapter pattern for easy provider onboarding
+
+## 🌐 Supported Storage Providers
+
+| Provider | Network | Description |
+|----------|---------|-------------|
+| **Filecoin** | Calibration Testnet | Cryptographic proof of storage |
+| **Arweave** | Testnet/Sandbox | Permanent, one-time payment storage |
+| **Storj** | DCS | S3-compatible decentralized cloud |
+| **BNB Greenfield** | Testnet | BNB Chain's decentralized storage |
+| **Akash** | Testnet | Decentralized cloud marketplace |
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         Client UI                           │
+│                   (HTML/CSS/JS + EJS)                       │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      Express API                            │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
+│  │Providers │ │ Payments │ │  Orders  │ │  Users   │       │
+│  │Controller│ │Controller│ │Controller│ │Controller│       │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘       │
+│       │            │            │            │              │
+│  ┌────▼────────────▼────────────▼────────────▼─────┐       │
+│  │                  Service Layer                   │       │
+│  └────┬────────────┬────────────┬──────────────────┘       │
+│       │            │            │                           │
+│  ┌────▼────┐  ┌────▼────┐  ┌────▼────┐                     │
+│  │Provider │  │ Stripe  │  │Blockchain│                     │
+│  │Registry │  │ Service │  │ Service  │                     │
+│  └────┬────┘  └─────────┘  └────┬─────┘                     │
+└───────┼─────────────────────────┼───────────────────────────┘
+        │                         │
+   ┌────▼────────────────────────▼────┐
+   │        Provider Adapters          │
+   │  ┌────────┐ ┌────────┐ ┌────────┐│
+   │  │Filecoin│ │Arweave │ │ Storj  ││
+   │  └────────┘ └────────┘ └────────┘│
+   │  ┌────────┐ ┌────────┐           │
+   │  │Greenf. │ │ Akash  │           │
+   │  └────────┘ └────────┘           │
+   └──────────────────────────────────┘
+```
+
+## 🛠️ Tech Stack
+
+- **Runtime**: Node.js v20+
+- **Language**: TypeScript 5.x
+- **Framework**: Express.js
+- **Database**: PostgreSQL with Prisma ORM v6
+- **Payments**: Stripe (Sandbox)
+- **Blockchain**: ethers.js, arweave.js
+- **Templates**: EJS
+- **Containerization**: Docker & Docker Compose
+
+## 📁 Project Structure
+
+```
+depin-storage-aggregator/
+├── src/
+│   ├── config/              # Configuration management
+│   ├── common/
+│   │   ├── database/        # Prisma client
+│   │   ├── interfaces/      # TypeScript interfaces
+│   │   └── utils/           # Helpers, logger, errors
+│   ├── modules/
+│   │   ├── providers/       # Provider adapters & registry
+│   │   ├── payments/        # Stripe integration
+│   │   ├── orders/          # Order management
+│   │   ├── blockchain/      # Transaction handling
+│   │   └── users/           # User management
+│   ├── middleware/          # Express middleware
+│   ├── app.ts               # Express app setup
+│   └── main.ts              # Entry point
+├── prisma/
+│   ├── schema.prisma        # Database schema
+│   └── seed.ts              # Seed data
+├── views/                   # EJS templates
+├── public/                  # Static assets
+├── Dockerfile
+├── docker-compose.yml
+└── README.md
+```
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Node.js v20+
+- PostgreSQL 14+
+- Stripe account (test mode)
+- (Optional) Testnet wallet with funds
+
+### 1. Clone & Install
+
+```bash
+git clone <repository-url>
+cd depin-storage-aggregator
+npm install
+```
+
+### 2. Environment Setup
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your configuration:
+
+```env
+# Required
+DATABASE_URL=postgresql://user:pass@localhost:5432/depin_storage
+STRIPE_SECRET_KEY=sk_test_xxx
+STRIPE_PUBLISHABLE_KEY=pk_test_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx
+SESSION_SECRET=your-32-char-secret-here
+
+# Optional (for real blockchain transactions)
+PLATFORM_WALLET_PRIVATE_KEY=your_testnet_private_key
+PLATFORM_WALLET_ADDRESS=your_testnet_wallet
+```
+
+### 3. Database Setup
+
+```bash
+# Generate Prisma client
+npm run db:generate
+
+# Run migrations
+npm run db:migrate
+
+# Seed database
+npm run db:seed
+```
+
+### 4. Start Development Server
+
+```bash
+npm run start:dev
+```
+
+Visit `http://localhost:3000`
+
+### 5. (Optional) Stripe Webhook Setup
+
+For local testing with Stripe webhooks:
+
+```bash
+# Install Stripe CLI
+stripe listen --forward-to localhost:3000/api/payments/webhook
+```
+
+## 🐳 Docker Deployment
+
+### Using Docker Compose
+
+```bash
+# Create .env file with your secrets
+cp .env.example .env
+
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f api
+
+# Run migrations
+docker-compose run --rm migrate
+```
+
+### Production Build
+
+```bash
+docker build -t depin-storage-aggregator .
+```
+
+## 📡 API Endpoints
+
+### Storage Plans
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/storage/plans` | List all available plans |
+| GET | `/api/storage/plans/:id` | Get plan details |
+
+### Providers
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/providers` | List all providers |
+| GET | `/api/providers/:slug` | Get provider details |
+| POST | `/api/providers/sync` | Trigger provider sync |
+
+### Payments
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/payments/checkout` | Create checkout session |
+| POST | `/api/payments/webhook` | Stripe webhook handler |
+| GET | `/api/payments/config/stripe` | Get Stripe public key |
+
+### Orders
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/orders` | List orders (with filters) |
+| GET | `/api/orders/:id` | Get order details |
+| GET | `/api/orders/stats` | Get order statistics |
+
+### Users
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/users/login` | Get or create user |
+| GET | `/api/users/:id` | Get user details |
+
+## 🔄 Purchase Flow
+
+```
+1. User browses /api/storage/plans
+2. User selects a plan and clicks "Purchase"
+3. System creates order (PENDING_PAYMENT)
+4. System creates Stripe Checkout session
+5. User completes payment on Stripe
+6. Stripe webhook triggers (checkout.session.completed)
+7. System updates payment (SUCCEEDED)
+8. System updates order (PAYMENT_COMPLETED)
+9. System triggers blockchain transaction
+10. Transaction submitted to provider's testnet
+11. System polls for confirmation
+12. On confirmation: order → COMPLETED
+```
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+npm test
+
+# Run with coverage
+npm run test:coverage
+
+# Watch mode
+npm run test:watch
+```
+
+### Test Stripe Payments
+
+Use Stripe test cards:
+- **Success**: `4242 4242 4242 4242`
+- **Decline**: `4000 0000 0000 0002`
+- **3DS Required**: `4000 0027 6000 3184`
+
+## 🔧 Configuration
+
+### Provider Configuration
+
+Providers are configured in `src/config/index.ts`. Each provider uses public testnet RPCs:
+
+```typescript
+providers: {
+  filecoin: {
+    rpcUrl: 'https://api.calibration.node.glif.io/rpc/v1',
+    chainId: '314159',
+  },
+  // ...
+}
+```
+
+### Adding a New Provider
+
+1. Create adapter in `src/modules/providers/adapters/`:
+
+```typescript
+export class NewProviderAdapter extends BaseStorageProviderAdapter {
+  public readonly slug = 'new-provider';
+  // Implement required methods
+}
+```
+
+2. Register in `src/modules/providers/provider.registry.ts`:
+
+```typescript
+this.registerAdapter(new NewProviderAdapter());
+```
+
+3. Add configuration in `src/config/index.ts`
+
+## ⚠️ Limitations & Mocking
+
+Some provider functionality is simulated for the MVP:
+
+| Provider | Real | Mocked |
+|----------|------|--------|
+| Filecoin | RPC connection, gas estimation | Deal creation (uses self-tx) |
+| Arweave | Network info | Transaction submission |
+| Storj | Configuration | Bucket creation |
+| Greenfield | RPC connection | Bucket operations |
+| Akash | Configuration | Deployment creation |
+
+**All blockchain transactions use testnet/sandbox environments.**
+
+## 📝 Environment Variables
+
+See `.env.example` for all available options:
+
+- `NODE_ENV` - Environment (development/production)
+- `DATABASE_URL` - PostgreSQL connection string
+- `STRIPE_*` - Stripe API keys
+- `PLATFORM_WALLET_*` - Testnet wallet for transactions
+- `*_RPC_URL` - Provider RPC endpoints
+- `ENABLE_CRON_JOBS` - Enable background jobs
+- `LOG_LEVEL` - Logging verbosity
+
+## 🔐 Security
+
+- Webhook signature verification (Stripe)
+- Input validation with Zod
+- Rate limiting on API routes
+- Helmet security headers
+- No secrets in code
+- Non-root Docker user
+
+## 📊 Monitoring
+
+### Health Check
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+### Logs
+
+```bash
+# Docker
+docker-compose logs -f api
+
+# Development
+# Logs output to console with Winston
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests
+5. Submit a pull request
+
+## 📄 License
+
+MIT License - see LICENSE file
+
+## 🙏 Acknowledgments
+
+- [Filecoin](https://filecoin.io)
+- [Arweave](https://arweave.org)
+- [Storj](https://storj.io)
+- [BNB Greenfield](https://greenfield.bnbchain.org)
+- [Akash Network](https://akash.network)

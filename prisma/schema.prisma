@@ -1,0 +1,348 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum ProviderStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+  DEPRECATED
+}
+
+enum PlanStatus {
+  AVAILABLE
+  UNAVAILABLE
+  DEPRECATED
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAYMENT_PROCESSING
+  PAYMENT_COMPLETED
+  PAYMENT_FAILED
+  BLOCKCHAIN_PENDING
+  BLOCKCHAIN_PROCESSING
+  BLOCKCHAIN_CONFIRMED
+  BLOCKCHAIN_FAILED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum TransactionStatus {
+  PENDING
+  SUBMITTED
+  CONFIRMING
+  CONFIRMED
+  FAILED
+  RETRYING
+}
+
+enum NetworkType {
+  TESTNET
+  MAINNET
+}
+
+// ============================================
+// MODELS
+// ============================================
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  name          String?
+  walletAddress String?  @map("wallet_address")
+  stripeCustomerId String? @unique @map("stripe_customer_id")
+  
+  // Audit fields
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+  
+  // Relations
+  orders        Order[]
+  payments      Payment[]
+  
+  @@index([email])
+  @@index([stripeCustomerId])
+  @@map("users")
+}
+
+model Provider {
+  id            String         @id @default(uuid())
+  name          String         @unique
+  slug          String         @unique
+  description   String?
+  website       String?
+  logoUrl       String?        @map("logo_url")
+  
+  // Network configuration
+  network       NetworkType    @default(TESTNET)
+  chainId       String?        @map("chain_id")
+  rpcUrl        String?        @map("rpc_url")
+  explorerUrl   String?        @map("explorer_url")
+  
+  // Provider-specific configuration (JSON)
+  config        Json           @default("{}")
+  
+  // Status
+  status        ProviderStatus @default(ACTIVE)
+  isEnabled     Boolean        @default(true) @map("is_enabled")
+  
+  // Audit fields
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  lastSyncedAt  DateTime?      @map("last_synced_at")
+  
+  // Relations
+  plans         StoragePlan[]
+  orders        Order[]
+  transactions  BlockchainTransaction[]
+  
+  @@index([slug])
+  @@index([status])
+  @@map("providers")
+}
+
+model StoragePlan {
+  id              String     @id @default(uuid())
+  providerId      String     @map("provider_id")
+  
+  // Plan details
+  name            String
+  description     String?
+  externalPlanId  String?    @map("external_plan_id")
+  
+  // Storage specifications
+  storageSizeGb   Float      @map("storage_size_gb")
+  storageSizeBytes BigInt    @map("storage_size_bytes")
+  durationDays    Int        @map("duration_days")
+  
+  // Pricing
+  priceUsdCents   Int        @map("price_usd_cents")
+  priceNative     String?    @map("price_native")
+  nativeCurrency  String?    @map("native_currency")
+  
+  // Features (JSON array)
+  features        Json       @default("[]")
+  
+  // Status
+  status          PlanStatus @default(AVAILABLE)
+  isActive        Boolean    @default(true) @map("is_active")
+  
+  // Version tracking for plan updates
+  version         Int        @default(1)
+  
+  // Audit fields
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+  
+  // Relations
+  provider        Provider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  orders          Order[]
+  
+  @@unique([providerId, externalPlanId])
+  @@index([providerId])
+  @@index([status])
+  @@index([priceUsdCents])
+  @@map("storage_plans")
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  orderNumber     String      @unique @map("order_number")
+  userId          String      @map("user_id")
+  providerId      String      @map("provider_id")
+  planId          String      @map("plan_id")
+  
+  // Order details
+  storageSizeGb   Float       @map("storage_size_gb")
+  durationDays    Int         @map("duration_days")
+  
+  // Pricing snapshot (at time of order)
+  priceUsdCents   Int         @map("price_usd_cents")
+  
+  // Storage allocation info
+  storageId       String?     @map("storage_id")
+  storageEndpoint String?     @map("storage_endpoint")
+  storageMetadata Json?       @map("storage_metadata")
+  
+  // Status tracking
+  status          OrderStatus @default(PENDING_PAYMENT)
+  statusMessage   String?     @map("status_message")
+  
+  // Idempotency
+  idempotencyKey  String?     @unique @map("idempotency_key")
+  
+  // Timestamps
+  paidAt          DateTime?   @map("paid_at")
+  allocatedAt     DateTime?   @map("allocated_at")
+  expiresAt       DateTime?   @map("expires_at")
+  
+  // Audit fields
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  
+  // Relations
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider        Provider    @relation(fields: [providerId], references: [id])
+  plan            StoragePlan @relation(fields: [planId], references: [id])
+  payments        Payment[]
+  transactions    BlockchainTransaction[]
+  
+  @@index([userId])
+  @@index([providerId])
+  @@index([status])
+  @@index([orderNumber])
+  @@map("orders")
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  orderId           String        @map("order_id")
+  userId            String        @map("user_id")
+  
+  // Stripe info
+  stripePaymentIntentId String?   @unique @map("stripe_payment_intent_id")
+  stripeSessionId   String?       @unique @map("stripe_session_id")
+  
+  // Amount
+  amountCents       Int           @map("amount_cents")
+  currency          String        @default("usd")
+  
+  // Status
+  status            PaymentStatus @default(PENDING)
+  statusMessage     String?       @map("status_message")
+  
+  // Metadata
+  metadata          Json          @default("{}")
+  
+  // Idempotency
+  idempotencyKey    String?       @unique @map("idempotency_key")
+  
+  // Timestamps
+  processedAt       DateTime?     @map("processed_at")
+  
+  // Audit fields
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  
+  // Relations
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([orderId])
+  @@index([userId])
+  @@index([stripePaymentIntentId])
+  @@index([status])
+  @@map("payments")
+}
+
+model BlockchainTransaction {
+  id              String            @id @default(uuid())
+  orderId         String            @map("order_id")
+  providerId      String            @map("provider_id")
+  
+  // Transaction details
+  txHash          String?           @map("tx_hash")
+  network         NetworkType       @default(TESTNET)
+  chainId         String?           @map("chain_id")
+  
+  // Wallet info
+  fromAddress     String?           @map("from_address")
+  toAddress       String?           @map("to_address")
+  
+  // Gas info
+  gasLimit        String?           @map("gas_limit")
+  gasPrice        String?           @map("gas_price")
+  gasUsed         String?           @map("gas_used")
+  
+  // Transaction data
+  value           String?
+  data            String?
+  nonce           Int?
+  
+  // Status
+  status          TransactionStatus @default(PENDING)
+  statusMessage   String?           @map("status_message")
+  confirmations   Int               @default(0)
+  
+  // Retry tracking
+  retryCount      Int               @default(0) @map("retry_count")
+  maxRetries      Int               @default(3) @map("max_retries")
+  lastRetryAt     DateTime?         @map("last_retry_at")
+  
+  // Block info
+  blockNumber     BigInt?           @map("block_number")
+  blockHash       String?           @map("block_hash")
+  
+  // Raw response (JSON)
+  rawResponse     Json?             @map("raw_response")
+  
+  // Timestamps
+  submittedAt     DateTime?         @map("submitted_at")
+  confirmedAt     DateTime?         @map("confirmed_at")
+  
+  // Audit fields
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  
+  // Relations
+  order           Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider        Provider          @relation(fields: [providerId], references: [id])
+  
+  @@index([orderId])
+  @@index([providerId])
+  @@index([txHash])
+  @@index([status])
+  @@map("blockchain_transactions")
+}
+
+// Sync tracking for providers
+model ProviderSyncLog {
+  id          String   @id @default(uuid())
+  providerId  String   @map("provider_id")
+  syncType    String   @map("sync_type")
+  status      String
+  message     String?
+  metadata    Json?
+  startedAt   DateTime @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  @@index([providerId])
+  @@index([syncType])
+  @@map("provider_sync_logs")
+}
+
+// System configuration
+model SystemConfig {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@map("system_config")
+}
